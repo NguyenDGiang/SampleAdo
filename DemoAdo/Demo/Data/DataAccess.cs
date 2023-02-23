@@ -48,28 +48,42 @@ namespace DemoAdo.Data
         public void Add(UserTest userTest)
         {
             dbConnection.Open();
-            string sqlString = $"Insert into UserTest(Name, Phone, Email, Address, CreateDate, Deleted) values(@Name, @Phone, @Email, @Address, @CreateDate, @Deleted)";
             using IDbCommand dbCommand = dbConnection.CreateCommand();
-            
-            StringBuilder sqlColumn = new StringBuilder();
-            StringBuilder sqlColumnValue = new StringBuilder();
-            foreach (var userProperty in userTest.GetType().GetProperties()) {
-                if (userProperty.Name == "Id")
-                    continue;
-                sqlColumn.Append(userProperty.Name);
-                sqlColumn.Append(",");
-                sqlColumnValue.Append("@" + userProperty.Name + ",");
-          
-                IDbDataParameter dbDataParameter = dbCommand.CreateParameter();
-                dbDataParameter.DbType = DbType.String;
+            IDbTransaction transaction = dbConnection.BeginTransaction();
+            try
+            {
+                string sqlString = $"Insert into UserTest(Name, Phone, Email, Address, CreateDate, Deleted) values(@Name, @Phone, @Email, @Address, @CreateDate, @Deleted)";
                 
-                dbDataParameter.ParameterName = "@" + userProperty.Name;
-                dbDataParameter.Value = userProperty.GetValue(userTest);
-                dbCommand.Parameters.Add(dbDataParameter);
+                StringBuilder sqlColumn = new StringBuilder();
+                StringBuilder sqlColumnValue = new StringBuilder();
+                foreach (var userProperty in userTest.GetType().GetProperties())
+                {
+                    if (userProperty.Name == "Id")
+                        continue;
+                    sqlColumn.Append(userProperty.Name);
+                    sqlColumn.Append(",");
+                    sqlColumnValue.Append("@" + userProperty.Name + ",");
+
+                    IDbDataParameter dbDataParameter = dbCommand.CreateParameter();
+                    dbDataParameter.DbType = DbType.String;
+
+                    dbDataParameter.ParameterName = "@" + userProperty.Name;
+                    dbDataParameter.Value = userProperty.GetValue(userTest);
+                    dbCommand.Parameters.Add(dbDataParameter);
+                }
+                dbCommand.CommandText = $"Insert into UserTest({sqlColumn.ToString().TrimEnd(',')}) values({sqlColumnValue.ToString().TrimEnd(',')})"; 
+                dbCommand.Transaction = transaction;
+                dbCommand.ExecuteNonQuery();
+                transaction.Commit();
             }
-            dbCommand.CommandText = $"Insert into UserTest({sqlColumn.ToString().TrimEnd(',')}) values({sqlColumnValue.ToString().TrimEnd(',')})"; ;
-            dbCommand.ExecuteNonQuery();
-            dbConnection.Close();
+            catch (Exception ex)
+            {
+                transaction.Rollback();
+            }
+            finally{
+
+                dbConnection.Close();
+            }
         }
 
         public void Delete(int Id)
