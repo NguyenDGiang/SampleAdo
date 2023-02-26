@@ -11,7 +11,7 @@ using System.Threading.Tasks;
 
 namespace DemoAdo.Data
 {
-    public class DataAccess : IDataAccess
+    public class DataAccess<T> : IDataAccess<T> where T : class, new()
     {
         private readonly IDbConnection dbConnection;
         private readonly IConfiguration _configuration;
@@ -21,57 +21,82 @@ namespace DemoAdo.Data
             dbConnection = new SqlConnection(_configuration);
         }
 
-        public List<UserTest> GetAll()
+        public List<T> GetAll()
         {
-            List<UserTest> users = new List<UserTest>();
+            List<T> users = new List<T>();
+            
             dbConnection.Open();
-            string sqlString = $"Select * from UserTest";
+            var className = typeof(T).ToString().Split('.');
+            string sqlString = $"Select * from {className[className.Length - 1]}";
             using IDbCommand dbCommand = dbConnection.CreateCommand();
             dbCommand.CommandText = sqlString;
             IDataReader dataReader = dbCommand.ExecuteReader();
             while (dataReader.Read())
             {
-                users.Add(new UserTest()
+                T t = new T();
+                foreach (var property in typeof(T).GetProperties())
                 {
-                    Id = (int)dataReader["Id"],
-                    Name = (string)dataReader["Name"],
-                    Address = (string)dataReader["Address"],
-                    CreateDate = (DateTime)dataReader["CreateDate"],
-                    Deleted = (bool)dataReader["Deleted"],
-                    Email = (string)dataReader["Email"],
-                    Phone = (string)dataReader["Email"]
-                });
+                    property.SetValue(t, dataReader[property.Name]);
+                }
+                users.Add(t);
             }
             return users;
         }
 
-        public void Add(UserTest userTest)
+        public void Add(T t)
         {
             dbConnection.Open();
             using IDbCommand dbCommand = dbConnection.CreateCommand();
             IDbTransaction transaction = dbConnection.BeginTransaction();
             try
             {
-                string sqlString = $"Insert into UserTest(Name, Phone, Email, Address, CreateDate, Deleted) values(@Name, @Phone, @Email, @Address, @CreateDate, @Deleted)";
                 
                 StringBuilder sqlColumn = new StringBuilder();
                 StringBuilder sqlColumnValue = new StringBuilder();
-                foreach (var userProperty in userTest.GetType().GetProperties())
+                foreach (var userProperty in t.GetType().GetProperties())
                 {
                     if (userProperty.Name == "Id")
                         continue;
+
+                    IDbDataParameter dbDataParameter = dbCommand.CreateParameter();
+                    dbDataParameter.Value = userProperty.GetValue(t);
+                    if (userProperty.PropertyType == typeof(int) || userProperty.PropertyType == typeof(int?))
+                    {
+                        dbDataParameter.DbType = System.Data.DbType.Int32;
+                    }
+                    else if (userProperty.PropertyType == typeof(long) || userProperty.PropertyType == typeof(long?))
+                    {
+                        dbDataParameter.DbType = System.Data.DbType.Int64;
+                    }
+                    else if (userProperty.PropertyType == typeof(bool))
+                    {
+                        dbDataParameter.DbType = System.Data.DbType.Int32;
+                        dbDataParameter.Value = userProperty.GetValue(t) != null && (bool)userProperty.GetValue(t) ? 1 : 0;
+                    }
+                    else if (userProperty.PropertyType == typeof(byte[]))
+                    {
+                        dbDataParameter.DbType = System.Data.DbType.Binary;
+                    }
+                    else if (userProperty.PropertyType == typeof(DateTime) || userProperty.PropertyType == typeof(DateTime?))
+                    {
+                        if (userProperty.GetValue(t) != null && ((DateTime?)userProperty.GetValue(t)).HasValue)
+                        {
+                            dbDataParameter.Value = ((DateTime)userProperty.GetValue(t)).ToString("yyyy-MM-dd HH:mm:ss.ffffff");
+                        }
+                        dbDataParameter.DbType = System.Data.DbType.String;
+                    }
+                    else
+                    {
+                        dbDataParameter.DbType = System.Data.DbType.String;
+                    }
                     sqlColumn.Append(userProperty.Name);
                     sqlColumn.Append(",");
                     sqlColumnValue.Append("@" + userProperty.Name + ",");
-
-                    IDbDataParameter dbDataParameter = dbCommand.CreateParameter();
-                    dbDataParameter.DbType = DbType.String;
-
                     dbDataParameter.ParameterName = "@" + userProperty.Name;
-                    dbDataParameter.Value = userProperty.GetValue(userTest);
                     dbCommand.Parameters.Add(dbDataParameter);
                 }
-                dbCommand.CommandText = $"Insert into UserTest({sqlColumn.ToString().TrimEnd(',')}) values({sqlColumnValue.ToString().TrimEnd(',')})"; 
+                var className = typeof(T).ToString().Split('.');
+                dbCommand.CommandText = $"Insert into {className[className.Length - 1]}({sqlColumn.ToString().TrimEnd(',')}) values({sqlColumnValue.ToString().TrimEnd(',')})"; 
                 dbCommand.Transaction = transaction;
                 dbCommand.ExecuteNonQuery();
                 transaction.Commit();
@@ -101,9 +126,33 @@ namespace DemoAdo.Data
             dbDataParameter.ParameterName = "@Id";
             dbDataParameter.Value = Id;
             dbCommand.Parameters.Add(dbDataParameter);
-            dbCommand.CommandText = $"Delete from UserTest where Id = @Id"; 
+            var className = typeof(T).ToString().Split('.');
+            dbCommand.CommandText = $"Delete from {className[className.Length - 1]} where Id = @Id"; 
             dbCommand.ExecuteNonQuery();
             dbConnection.Close();
+        }
+
+        public List<T> GetAll(StringBuilder join)
+        {
+            List<T> users = new List<T>();
+
+            dbConnection.Open();
+            var className = typeof(T).ToString().Split('.');
+            string sqlString = $"Select * from {className[className.Length - 1]}";
+            sqlString += join;
+            using IDbCommand dbCommand = dbConnection.CreateCommand();
+            dbCommand.CommandText = sqlString;
+            IDataReader dataReader = dbCommand.ExecuteReader();
+            while (dataReader.Read())
+            {
+                T t = new T();
+                foreach (var property in typeof(T).GetProperties())
+                {
+                    property.SetValue(t, dataReader[property.Name]);
+                }
+                users.Add(t);
+            }
+            return users;
         }
     }
 }

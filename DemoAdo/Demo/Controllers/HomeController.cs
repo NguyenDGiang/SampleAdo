@@ -9,22 +9,22 @@ namespace Demo.Controllers
     public class HomeController : Controller
     {
         private readonly ILogger<HomeController> _logger;
-        private readonly IService _service;
+        private readonly IUserService _userService;
 
-        public HomeController(ILogger<HomeController> logger, IService service)
+        public HomeController(ILogger<HomeController> logger, IUserService userService)
         {
             _logger = logger;
-            _service = service;
+            _userService = userService;
         }
 
         public IActionResult Index()
         {
-            return View(_service.GetAll());
+            return View(_userService.GetAll());
         }
 
         public IActionResult CreateUser(UserTest userTest)
         {
-            _service.Add(userTest);
+            _userService.Add(userTest);
             return RedirectToAction("Index");
         }
         public IActionResult Create()
@@ -34,7 +34,7 @@ namespace Demo.Controllers
 
         public IActionResult Delete(int Id)
         {
-            _service.Delete(Id);
+            _userService.Delete(Id);
             return RedirectToAction("Index");
         }
 
